@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Космический Кликер 🌌</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+        }
+        body {
+            font-family: 'Segoe UI', Roboto, sans-serif;
+            background: radial-gradient(circle at center, #1e1b4b 0%, #0f172a 100%);
+            color: #f8fafc;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            padding: 20px;
+        }
+        .game-container {
+            text-align: center;
+            max-width: 400px;
+            width: 100%;
+            background: rgba(30, 41, 59, 0.7);
+            padding: 30px;
+            border-radius: 24px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+        }
+        .score-display {
+            font-size: 2rem;
+            font-weight: bold;
+            margin-bottom: 5px;
+            color: #38bdf8;
+            text-shadow: 0 0 10px rgba(56, 189, 248, 0.5);
+        }
+        .income-display {
+            font-size: 1rem;
+            color: #94a3b8;
+            margin-bottom: 25px;
+        }
+        .planet-btn {
+            width: 180px;
+            height: 180px;
+            border-radius: 50%;
+            background: radial-gradient(circle at 30% 30%, #ec4899, #8b5cf6, #1e1b4b);
+            border: none;
+            cursor: pointer;
+            box-shadow: 0 0 30px rgba(139, 92, 246, 0.6);
+            transition: transform 0.1s ease, box-shadow 0.3s;
+            margin-bottom: 30px;
+            outline: none;
+        }
+        .planet-btn:active {
+            transform: scale(0.95);
+            box-shadow: 0 0 40px rgba(236, 72, 153, 0.8);
+        }
+        .shop {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            text-align: left;
+        }
+        .shop-item {
+            background: rgba(15, 23, 42, 0.6);
+            padding: 12px 16px;
+            border-radius: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            transition: background 0.2s;
+        }
+        .shop-item.disabled {
+            opacity: 0.5;
+        }
+        .item-info h3 {
+            font-size: 0.95rem;
+            color: #f1f5f9;
+        }
+        .item-info p {
+            font-size: 0.8rem;
+            color: #94a3b8;
+        }
+        .buy-btn {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 8px 14px;
+            border-radius: 8px;
+            font-weight: bold;
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: background 0.2s;
+        }
+        .buy-btn:hover:not(:disabled) {
+            background: #2563eb;
+        }
+        .buy-btn:disabled {
+            background: #475569;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+<body>
+
+<div class="game-container">
+    <div class="score-display" id="score">0 🌌</div>
+    <div class="income-display" id="income">Пассивный доход: +0/сек</div>
+
+    <button class="planet-btn" id="planet" onclick="clickPlanet()"></button>
+
+    <div class="shop">
+        <div class="shop-item" id="item1">
+            <div class="item-info">
+                <h3>🛸 Дрон-майнер</h3>
+                <p>Доход: +1/сек | Цена: <span id="cost1">15</span></p>
+            </div>
+            <button class="buy-btn" id="btn1" onclick="buyUpgrade(1, 15, 1)">Купить</button>
+        </div>
+
+        <div class="shop-item" id="item2">
+            <div class="item-info">
+                <h3>🚀 Космический завод</h3>
+                <p>Доход: +8/сек | Цена: <span id="cost2">100</span></p>
+            </div>
+            <button class="buy-btn" id="btn2" onclick="buyUpgrade(2, 100, 8)">Купить</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    let score = 0;
+    let income = 0;
+    
+    const upgrades = {
+        1: { cost: 15, income: 1, count: 0 },
+        2: { cost: 100, income: 8, count: 0 }
+    };
+
+    const scoreText = document.getElementById('score');
+    const incomeText = document.getElementById('income');
+
+    function updateUI() {
+        scoreText.textContent = Math.floor(score) + ' 🌌';
+        incomeText.textContent = `Пассивный доход: +${income}/сек`;
+        
+        // Проверяем доступность кнопок в магазине
+        for (let id in upgrades) {
+            const btn = document.getElementById('btn' + id);
+            const item = document.getElementById('item' + id);
+            if (score >= upgrades[id].cost) {
+                btn.disabled = false;
+                item.classList.remove('disabled');
+            } else {
+                btn.disabled = true;
+                item.classList.add('disabled');
+            }
+        }
+    }
+
+    function clickPlanet() {
+        score += 1;
+        updateUI();
+    }
+
+    function buyUpgrade(id, baseCost, incomeBoost) {
+        let upgrade = upgrades[id];
+        if (score >= upgrade.cost) {
+            score -= upgrade.cost;
+            income += upgrade.income;
+            upgrade.count++;
+            // Увеличиваем цену для следующей покупки на 20%
+            upgrade.cost = Math.round(upgrade.cost * 1.2);
+            
+            document.getElementById('cost' + id).textContent = upgrade.cost;
+            updateUI();
+        }
+    }
+
+    // Цикл пассивного дохода (срабатывает каждые 100мс для плавности)
+    setInterval(() => {
+        if (income > 0) {
+            score += income / 10;
+            updateUI();
+        }
+    }, 100);
+
+    // Первичная настройка кнопок при старте
+    updateUI();
+</script>
+
+</body>
+</html>
