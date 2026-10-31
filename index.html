@@ -33,6 +33,7 @@
             backdrop-filter: blur(10px);
             border: 1px solid rgba(255, 255, 255, 0.1);
             box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+            position: relative;
         }
         .score-display {
             font-size: 2rem;
@@ -58,9 +59,22 @@
             margin-bottom: 30px;
             outline: none;
         }
-        .planet-btn:active {
+        .planet-btn:active:not(:disabled) {
             transform: scale(0.95);
             box-shadow: 0 0 40px rgba(236, 72, 153, 0.8);
+        }
+        .planet-btn:disabled {
+            background: #475569;
+            box-shadow: none;
+            cursor: not-allowed;
+        }
+        .anti-cheat-alert {
+            display: none;
+            color: #ef4444;
+            font-weight: bold;
+            font-size: 0.9rem;
+            margin-bottom: 15px;
+            animation: blink 1s infinite;
         }
         .shop {
             display: flex;
@@ -78,17 +92,9 @@
             border: 1px solid rgba(255, 255, 255, 0.05);
             transition: background 0.2s;
         }
-        .shop-item.disabled {
-            opacity: 0.5;
-        }
-        .item-info h3 {
-            font-size: 0.95rem;
-            color: #f1f5f9;
-        }
-        .item-info p {
-            font-size: 0.8rem;
-            color: #94a3b8;
-        }
+        .shop-item.disabled { opacity: 0.5; }
+        .item-info h3 { font-size: 0.95rem; color: #f1f5f9; }
+        .item-info p { font-size: 0.8rem; color: #94a3b8; }
         .buy-btn {
             background: #3b82f6;
             color: white;
@@ -98,14 +104,11 @@
             font-weight: bold;
             cursor: pointer;
             font-size: 0.85rem;
-            transition: background 0.2s;
         }
-        .buy-btn:hover:not(:disabled) {
-            background: #2563eb;
-        }
-        .buy-btn:disabled {
-            background: #475569;
-            cursor: not-allowed;
+        .buy-btn:disabled { background: #475569; cursor: not-allowed; }
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
         }
     </style>
 </head>
@@ -114,8 +117,11 @@
 <div class="game-container">
     <div class="score-display" id="score">0 🌌</div>
     <div class="income-display" id="income">Пассивный доход: +0/сек</div>
+    
+    <!-- Поле для предупреждения о читах -->
+    <div class="anti-cheat-alert" id="cheatAlert">⚠️ ОБНАРУЖЕН АВТОКЛИКЕР! БЛОКИРОВКА 5 СЕК ⚠️</div>
 
-    <button class="planet-btn" id="planet" onclick="clickPlanet()"></button>
+    <button class="planet-btn" id="planet"></button>
 
     <div class="shop">
         <div class="shop-item" id="item1">
@@ -123,7 +129,7 @@
                 <h3>🛸 Дрон-майнер</h3>
                 <p>Доход: +1/сек | Цена: <span id="cost1">15</span></p>
             </div>
-            <button class="buy-btn" id="btn1" onclick="buyUpgrade(1, 15, 1)">Купить</button>
+            <button class="buy-btn" id="btn1" onclick="buyUpgrade(1)">Купить</button>
         </div>
 
         <div class="shop-item" id="item2">
@@ -131,32 +137,46 @@
                 <h3>🚀 Космический завод</h3>
                 <p>Доход: +8/сек | Цена: <span id="cost2">100</span></p>
             </div>
-            <button class="buy-btn" id="btn2" onclick="buyUpgrade(2, 100, 8)">Купить</button>
+            <button class="buy-btn" id="btn2" onclick="buyUpgrade(2)">Купить</button>
         </div>
     </div>
 </div>
 
 <script>
-    let score = 0;
-    let income = 0;
+    // Загрузка сохранений из памяти браузера (чтобы прогресс не терялся)
+    let score = parseFloat(localStorage.getItem('space_score')) || 0;
+    let income = parseFloat(localStorage.getItem('space_income')) || 0;
     
-    const upgrades = {
+    let upgrades = JSON.parse(localStorage.getItem('space_upgrades')) || {
         1: { cost: 15, income: 1, count: 0 },
         2: { cost: 100, income: 8, count: 0 }
     };
 
+    // Переменные для античита
+    let clickTimestamps = [];
+    let isBanned = false;
+
     const scoreText = document.getElementById('score');
     const incomeText = document.getElementById('income');
+    const planetBtn = document.getElementById('planet');
+    const cheatAlert = document.getElementById('cheatAlert');
+
+    function saveData() {
+        localStorage.setItem('space_score', score);
+        localStorage.setItem('space_income', income);
+        localStorage.setItem('space_upgrades', JSON.stringify(upgrades));
+    }
 
     function updateUI() {
         scoreText.textContent = Math.floor(score) + ' 🌌';
         incomeText.textContent = `Пассивный доход: +${income}/сек`;
         
-        // Проверяем доступность кнопок в магазине
         for (let id in upgrades) {
             const btn = document.getElementById('btn' + id);
             const item = document.getElementById('item' + id);
-            if (score >= upgrades[id].cost) {
+            document.getElementById('cost' + id).textContent = upgrades[id].cost;
+            
+            if (score >= upgrades[id].cost && !isBanned) {
                 btn.disabled = false;
                 item.classList.remove('disabled');
             } else {
@@ -166,34 +186,70 @@
         }
     }
 
-    function clickPlanet() {
+    // Слушатель клика с защитой
+    planetBtn.addEventListener('click', (event) => {
+        if (isBanned) return;
+
+        // ЗАЩИТА 1: Проверка на программный клик (скрипты не имеют физических координат или флага isTrusted)
+        if (!event.isTrusted || (event.clientX === 0 && event.clientY === 0)) {
+            triggerAntiCheat();
+            return;
+        }
+
+        // ЗАЩИТА 2: Проверка скорости кликов (максимум 15 кликов в секунду)
+        const now = Date.now();
+        clickTimestamps.push(now);
+        // Очищаем старые таймстампы (старше 1 секунды)
+        clickTimestamps = clickTimestamps.filter(time => now - time < 1000);
+
+        if (clickTimestamps.length > 15) {
+            triggerAntiCheat();
+            return;
+        }
+
         score += 1;
+        saveData();
         updateUI();
+    });
+
+    function triggerAntiCheat() {
+        isBanned = true;
+        cheatAlert.style.display = 'block';
+        planetBtn.disabled = true;
+        clickTimestamps = [];
+        updateUI();
+
+        // Снимаем блокировку через 5 секунд
+        setTimeout(() => {
+            isBanned = false;
+            cheatAlert.style.display = 'none';
+            planetBtn.disabled = false;
+            updateUI();
+        }, 5000);
     }
 
-    function buyUpgrade(id, baseCost, incomeBoost) {
+    function buyUpgrade(id) {
+        if (isBanned) return;
         let upgrade = upgrades[id];
         if (score >= upgrade.cost) {
             score -= upgrade.cost;
             income += upgrade.income;
             upgrade.count++;
-            // Увеличиваем цену для следующей покупки на 20%
             upgrade.cost = Math.round(upgrade.cost * 1.2);
-            
-            document.getElementById('cost' + id).textContent = upgrade.cost;
+            saveData();
             updateUI();
         }
     }
 
-    // Цикл пассивного дохода (срабатывает каждые 100мс для плавности)
+    // Пассивный доход
     setInterval(() => {
         if (income > 0) {
             score += income / 10;
+            saveData();
             updateUI();
         }
     }, 100);
 
-    // Первичная настройка кнопок при старте
     updateUI();
 </script>
 
